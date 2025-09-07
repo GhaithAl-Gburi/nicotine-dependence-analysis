@@ -192,9 +192,12 @@ write.csv(data_cleaned, "outputs/data_cleaned_with_scores.csv", row.names = FALS
 
 ## Contact
 - **Author:** Ghaith Al‑Gburi
-- **Email:** ghaith.ali.khaleel@gmail.com 
-- **GitHub:** `https://github.com/GhaithAl-Gburi`  
+- **Email:** ghaith.ali.khaleel@gmail.com
+- **GitHub:** `https://github.com/GhaithAl-Gburi` 
 - **ORCID:** `0000-0001-7427-8310` 
 
-
+- **Co-author:** Mustafa Al‑Gburi
+- **Email:** mustafa.ali.gburi@gmail.com
+- **GitHub:** `https://github.com/mustafagburi` 
+- **ORCID:** `0009-0009-2699-8351` 
 ---
