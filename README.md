@@ -23,7 +23,8 @@ The `Simulation results/` directory contains the outputs produced when the analy
 - `main_analysis.Rmd` — the primary R Markdown analysis notebook.
 - `LICENSE` — AGPL-3.0 license.
 - `README.md` — this file.
-- `Simulation results/` — a directory containing rendered HTML reports and simulation outputs created while testing the analysis workflow on simulated data.
+- `data collection tool/` — a directory containing the arabic and english version of the research survey
+- `Simulation results/` — a directory containing scripts and rendered HTML reports generated while testing the analysis workflow on simulated data.
   - `data_simulation.Rmd` — the R Markdown analysis notebook used for generating simulated data.
   - `data_simulation.html` — a rendered HTML report documenting the data-generation process.
   - `sim_input.csv` — the simulated dataset used for testing the analytic pipeline.
