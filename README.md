@@ -58,11 +58,6 @@ install.packages(c(
 
 ---
 
-## Expected data format
-
-
----
-
 ## What the script does (high-level)
 
 - Clears the R environment and sets a reproducible seed (`rm(list = ls()); set.seed(2000)`).
