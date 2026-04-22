@@ -1,6 +1,6 @@
 # README — Motives for Nicotine Dependence and Cessation Among Undergraduate College Students in Iraq (R)
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17074154.svg)](https://doi.org/10.5281/zenodo.17074154)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17074153.svg)](https://doi.org/10.5281/zenodo.17074153)
 
 **Repository authors:** Ghaith Al-Gburi, Mustafa Al-Gburi
 
@@ -134,7 +134,7 @@ Rscript -e "rmarkdown::render('explore_nictotine_dependence.Rmd')"
 **How to cite this code:**
 
 ```
-Al-Gburi, G., & Al-Gburi, M. (2025). nicotine-dependence-analysis. Zenodo. https://doi.org/10.5281/zenodo.17074154
+Al-Gburi, G., & Al-Gburi, M. (2025). nicotine-dependence-analysis. Zenodo. https://doi.org/10.5281/zenodo.17074153
 ```
 
 ---
