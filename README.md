@@ -18,14 +18,15 @@ Click below to view the complete analysis results and output:
 ---
 
 ## Purpose
-This repository contains `explore_nictotine_dependence.Rmd` — an R Markdown script used to examine the **motives for nicotine dependence and cessation among undergraduate college students in Iraq**. The script performs data cleaning and attention-based exclusion, generates sample characteristic tables, runs confirmatory factor analyses (CFA) for the **Brief Wisconsin Inventory of Smoking Dependence Motives (WISDM-37)** and the **Reasons For Quitting (RFQ)** scales, estimates internal consistency (Cronbach's α and composite reliability), and models the relationships between smoking motives and nicotine dependence (Fagerström Test for Nicotine Dependence, FTND) across traditional cigarettes, e-cigarettes, and hookah using MM-estimator robust regression. Relations between cessation motives and time since quitting are tested using Kruskal-Wallis tests with Benjamini-Hochberg correction.
+This repository contains `explore_nictotine_dependence.Rmd` — an R Markdown script used to examine the **motives for nicotine dependence and cessation among undergraduate college students in Iraq**. The script performs data cleaning and attention-based exclusion, generates sample characteristic tables, runs confirmatory factor analyses (CFA) for the **Brief Wisconsin Inventory of Smoking Dependence Motives (WISDM-37)** and the **Reasons For Quitting (RFQ)** scales, estimates internal consistency, and models the relationships between smoking motives and nicotine dependence (Fagerström Test for Nicotine Dependence, FTND) across traditional cigarettes, e-cigarettes, and hookah using MM-estimator robust regression. Relations between cessation motives and time since quitting are tested using Kruskal-Wallis tests with Benjamin-Hochberg correction.
 
 > **Data privacy:** Participant-level identifiable data are **not included** in this repository.
 
 ---
 
 ## Files in this repo
-- `explore_nictotine_dependence.Rmd` — R Markdown script used for data cleaning, psychometric analysis, and hypothesis testing.
+- `explore_nictotine_dependence.Rmd` — R Markdown script used for data analysis.
+- `nicotine_dataset.csv` — CSV file containing the data used for statistical analysis (Pending publication)
 - `analysis_report.pdf` — Rendered PDF report for the complete analysis workflow.
 - `Heatmaps.xlsx` — Excel file containing the item-item, item-factor, and factor-factor correlation matrices.
 - `data collection tool/` — Directory containing the Arabic and English versions of the research survey.
@@ -142,6 +143,7 @@ Al-Gburi, G., & Al-Gburi, M. (2025). nicotine-dependence-analysis. Zenodo. https
 - **Email:** ghaith.ali.khaleel@gmail.com
 - **GitHub:** [https://github.com/GhaithAl-Gburi](https://github.com/GhaithAl-Gburi)
 - **ORCID:** `0000-0001-7427-8310`
+
 - **Co-author:** Mustafa Al-Gburi
 - **Email:** mustafa.ali.gburi@gmail.com
 - **GitHub:** [https://github.com/mustafagburi](https://github.com/mustafagburi)
