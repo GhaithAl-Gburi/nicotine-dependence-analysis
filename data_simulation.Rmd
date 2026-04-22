@@ -1,0 +1,467 @@
+
+```{r}
+#clear R Environment and set the seed
+rm(list=ls())
+set.seed(2000)
+
+# Load necessary packages
+library(MASS)
+library(dplyr)
+```
+
+```{r}
+# Initializing the simulation process 
+
+# Parameters for simulated data
+n_total <- 10000
+n_duplicates <- 300
+n_non_undergrad <- 450
+n_non_smokers <- 600
+n_inattentive <- 225
+n_fast_responders <- 150
+
+cat("Starting with", n_total, "participants\n")
+cat("Expected exclusions:\n")
+cat("- Duplicates:", n_duplicates, "\n")
+cat("- Non-undergraduates:", n_non_undergrad, "\n")
+cat("- Non-smokers:", n_non_smokers, "\n")
+cat("- Inattentive responders:", n_inattentive, "\n")
+cat("- Fast responders:", n_fast_responders, "\n\n")
+
+# Column names (99 columns)
+column_names <- c(
+  "id", "response_time", "deviceid", "age", "sex", "smoke_stat", "ethnicity",
+  "provience", "marital_stat", "residence", "undergrad_now", "speciality",
+  "university_college", "smoke_now/cigarettes", "smoke_now/e_cigarettes",
+  "smoke_now/hookah", "smoke_past/cigarettes", "smoke_past/e_cigarettes",
+  "smoke_past/hookah", "smoke_most_a", "time_since_quitting", "hc1", "sc1",
+  "ir1", "sp1", "hc2", "sc2", "ir2", "sp2", "hc3", "sc3", "ir3", "sp3",
+  "hc4", "attention_check_a", "sc4", "ir4", "sp4", "hc5", "sc5", "ir5",
+  "sp5", "smoke_most_b", "auto1", "loc1", "tol1", "craving1", "taste1",
+  "cog_e1", "w_control1", "cue1", "affect1", "auto2", "attach1", "cue2",
+  "cog_e2", "auto3", "taste2", "loc2", "craving2", "social1", "w_control2",
+  "taste3", "loc3", "attach2", "craving3", "cue3", "auto4", "attach3",
+  "social2", "attention_check_b", "tol2", "craving4", "social3", "tol3",
+  "cog_e3", "affect2", "w_control3", "loc4", "tol4", "affect3", "cigg_f1",
+  "cigg_f2", "cigg_f3", "cigg_f4", "cigg_f5", "cigg_f6", "ecigg_f1",
+  "ecigg_f2", "ecigg_f3", "ecigg_f4", "ecigg_f5", "ecigg_f6", "h_f1",
+  "h_f2", "h_f3", "h_f4", "h_f5", "h_f6"
+)
+
+# Initialize data frame
+sim_input <- data.frame(matrix(NA, 
+                               nrow = n_total, 
+                               ncol = length(column_names)
+                               ),
+                        stringsAsFactors = FALSE
+                        )
+names(sim_input) <- column_names
+
+cat("Initializing is complete \n")
+```
+
+```{r}
+# Simulate data for demographics and IDs
+
+sim_input$id <- 1:n_total
+
+sim_input$deviceid <- c(1:(n_total - n_duplicates),
+                       sample(1:(n_total - n_duplicates), 
+                              n_duplicates, 
+                              replace = TRUE)
+                       )
+
+sim_input$response_time <- rpois(n_total, 
+                                 lambda = 300) + 50
+
+sim_input$age <- sample(18:25, 
+                        n_total, 
+                        replace = TRUE
+                        )
+
+sim_input$sex <- sample(c("Male", "Female"), 
+                        n_total, 
+                        replace = TRUE,
+                        prob = c(0.5, 0.5)
+                        )
+
+sim_input$ethnicity <- sample(c("Arab", "Kurd", "Turkman", "Other"),
+                             n_total, 
+                             replace = TRUE, 
+                             prob = c(0.4, 0.4, 0.15, 0.05)
+                             )
+
+sim_input$provience <- sample(c("Baghdad", "Karbala", "Erbil", "Kirkuk"),
+                             n_total, 
+                             replace = TRUE,
+                             prob = c(0.35, 0.3, 0.25, 0.1)
+                             )
+
+sim_input$marital_stat <- sample(c("Single", "Married", "Divorced", "Widowed"),
+                                n_total, 
+                                replace = TRUE, 
+                                prob = c(0.7, 0.2, 0.08, 0.02)
+                                )
+
+sim_input$residence <- sample(c("Urban", "Rural"),
+                              n_total, 
+                              replace = TRUE, 
+                              prob = c(0.8, 0.2)
+                              )
+
+sim_input$speciality <- sample(c("Medicine", "Sciences", "Engineering", "Business", "Other"),
+                               n_total, 
+                               replace = TRUE
+                               )
+
+sim_input$university_college <- sample(c("Baghdad", "Warith"), 
+                                       n_total, 
+                                       replace = TRUE,
+                                       prob = c(0.8, 0.2)
+                                       )
+
+sim_input$smoke_stat <- sample(c("smoker", "ex_smoker", "non_smoker"), 
+                               n_total,
+                               replace = TRUE, 
+                               prob = c(0.45, 0.35, 0.20)
+                               )
+
+sim_input$undergrad_now <- sample(c("Yes", "No"), 
+                                  n_total, 
+                                  replace = TRUE, 
+                                  prob = c(0.9, 0.1)
+                                  )
+
+cat("Data for demographic and ID variables have been simulated \n")
+```
+
+```{r}
+# Simulate data for smoking method variables
+
+# Variables resulting from multiple-response items
+sim_input$`smoke_now/cigarettes` <- sample(0:1, 
+                                           n_total, 
+                                           replace = TRUE, 
+                                           prob = c(0.7, 0.3)
+                                           )
+
+sim_input$`smoke_now/e_cigarettes` <- sample(0:1, 
+                                             n_total, 
+                                             replace = TRUE, 
+                                             prob = c(0.8, 0.2)
+                                             )
+
+sim_input$`smoke_now/hookah` <- sample(0:1, 
+                                       n_total, 
+                                       replace = TRUE, 
+                                       prob = c(0.9, 0.1)
+                                       )
+
+sim_input$`smoke_past/cigarettes` <- sample(0:1, 
+                                            n_total, 
+                                            replace = TRUE, 
+                                            prob = c(0.6, 0.4)
+                                            )
+
+sim_input$`smoke_past/e_cigarettes` <- sample(0:1, 
+                                              n_total, 
+                                              replace = TRUE, 
+                                              prob = c(0.7, 0.3)
+                                              )
+
+sim_input$`smoke_past/hookah` <- sample(0:1, 
+                                        n_total, 
+                                        replace = TRUE, 
+                                        prob = c(0.8, 0.2)
+                                        )
+
+# Variables resulting from single-reponse items
+sim_input$smoke_most_a <- sample(c("cigarettes", "e_cigarettes", "hookah", "none"),
+                                n_total, 
+                                replace = TRUE, 
+                                prob = c(0.4, 0.3, 0.2, 0.1)
+                                )
+
+sim_input$smoke_most_b <- sample(c("cigarettes", "e_cigarettes", "hookah", "none"),
+                                n_total, 
+                                replace = TRUE, 
+                                prob = c(0.4, 0.3, 0.2, 0.1)
+                                )
+
+sim_input$time_since_quitting <- sample(c("<6 months", "6 months to 1 year", "=> 1 year"), 
+                                        n_total,
+                                        replace = TRUE, 
+                                        prob = c(0.4, 0.35, 0.25)
+                                        )
+
+cat("Data for smoking methods variables have been simulated \n")
+```
+
+```{r}
+# Simulate data for the RFQ variables
+
+# Define factor structure for RFQ (4 factors with correlations)
+n_factors_rfq <- 4
+factor_cors_rfq <- matrix(c(
+  1.00, 0.60, 0.30, 0.35,  # hc correlations
+  0.60, 1.00, 0.35, 0.40,  # sc correlations  
+  0.30, 0.35, 1.00, 0.65,  # ir correlations
+  0.35, 0.40, 0.65, 1.00   # sp correlations
+), nrow = n_factors_rfq)
+
+# Generate latent factors
+rfq_factors <- mvrnorm(n = n_total, 
+                       mu = c(2.5, 2.7, 2.3, 2.4),  # Factor means
+                       Sigma = factor_cors_rfq)
+
+# Factor loading (set to be stronger than correlation between factors)
+hc_loadings <- c(0.75, 0.80, 0.70, 0.72, 0.78)
+sc_loadings <- c(0.72, 0.77, 0.68, 0.74, 0.71)
+ir_loadings <- c(0.70, 0.73, 0.76, 0.69, 0.72)
+sp_loadings <- c(0.74, 0.71, 0.77, 0.73, 0.70)
+
+# Reduced error for better factor structure
+error_sd <- 0.6
+
+# Generate items with proper factor structure
+
+# HC items
+sim_input$hc1 <- pmax(0, pmin(4, round(rfq_factors[,1] * hc_loadings[1] + rnorm(n_total, 0, error_sd))))
+sim_input$hc2 <- pmax(0, pmin(4, round(rfq_factors[,1] * hc_loadings[2] + rnorm(n_total, 0, error_sd))))
+sim_input$hc3 <- pmax(0, pmin(4, round(rfq_factors[,1] * hc_loadings[3] + rnorm(n_total, 0, error_sd))))
+sim_input$hc4 <- pmax(0, pmin(4, round(rfq_factors[,1] * hc_loadings[4] + rnorm(n_total, 0, error_sd))))
+sim_input$hc5 <- pmax(0, pmin(4, round(rfq_factors[,1] * hc_loadings[5] + rnorm(n_total, 0, error_sd))))
+
+# SC items
+sim_input$sc1 <- pmax(0, pmin(4, round(rfq_factors[,2] * sc_loadings[1] + rnorm(n_total, 0, error_sd))))
+sim_input$sc2 <- pmax(0, pmin(4, round(rfq_factors[,2] * sc_loadings[2] + rnorm(n_total, 0, error_sd))))
+sim_input$sc3 <- pmax(0, pmin(4, round(rfq_factors[,2] * sc_loadings[3] + rnorm(n_total, 0, error_sd))))
+sim_input$sc4 <- pmax(0, pmin(4, round(rfq_factors[,2] * sc_loadings[4] + rnorm(n_total, 0, error_sd))))
+sim_input$sc5 <- pmax(0, pmin(4, round(rfq_factors[,2] * sc_loadings[5] + rnorm(n_total, 0, error_sd))))
+
+# IR items
+sim_input$ir1 <- pmax(0, pmin(4, round(rfq_factors[,3] * ir_loadings[1] + rnorm(n_total, 0, error_sd))))
+sim_input$ir2 <- pmax(0, pmin(4, round(rfq_factors[,3] * ir_loadings[2] + rnorm(n_total, 0, error_sd))))
+sim_input$ir3 <- pmax(0, pmin(4, round(rfq_factors[,3] * ir_loadings[3] + rnorm(n_total, 0, error_sd))))
+sim_input$ir4 <- pmax(0, pmin(4, round(rfq_factors[,3] * ir_loadings[4] + rnorm(n_total, 0, error_sd))))
+sim_input$ir5 <- pmax(0, pmin(4, round(rfq_factors[,3] * ir_loadings[5] + rnorm(n_total, 0, error_sd))))
+
+# SP items
+sim_input$sp1 <- pmax(0, pmin(4, round(rfq_factors[,4] * sp_loadings[1] + rnorm(n_total, 0, error_sd))))
+sim_input$sp2 <- pmax(0, pmin(4, round(rfq_factors[,4] * sp_loadings[2] + rnorm(n_total, 0, error_sd))))
+sim_input$sp3 <- pmax(0, pmin(4, round(rfq_factors[,4] * sp_loadings[3] + rnorm(n_total, 0, error_sd))))
+sim_input$sp4 <- pmax(0, pmin(4, round(rfq_factors[,4] * sp_loadings[4] + rnorm(n_total, 0, error_sd))))
+sim_input$sp5 <- pmax(0, pmin(4, round(rfq_factors[,4] * sp_loadings[5] + rnorm(n_total, 0, error_sd))))
+
+cat("Data for the RFQ variables have been simulated \n")
+```
+
+
+```{r}
+# Simulate data for the WISDM-37 variables
+
+# Define 11-factor structure for WISDM with realistic correlations
+n_factors_wisdm <- 11
+
+# Create correlation matrix with higher within-PDM and within-SDM correlations
+wisdm_cor_mat <- matrix(0.25, nrow = n_factors_wisdm, ncol = n_factors_wisdm)
+diag(wisdm_cor_mat) <- 1
+
+# Higher correlations within PDM factors (1-4)
+wisdm_cor_mat[1:4, 1:4] <- 0.55
+
+# Higher correlations within SDM factors (5-11)
+wisdm_cor_mat[5:11, 5:11] <- 0.50
+
+# Restore diagonal
+diag(wisdm_cor_mat) <- 1
+
+# Generate latent factors
+wisdm_factors <- mvrnorm(n = n_total,
+                         mu = rep(4, 
+                                  n_factors_wisdm),
+                         Sigma = wisdm_cor_mat)
+
+# Standardize and scale to 1-7 range
+for(i in 1:n_factors_wisdm) {
+  wisdm_factors[,i] <- (wisdm_factors[,i] - min(wisdm_factors[,i])) / 
+                       (max(wisdm_factors[,i]) - min(wisdm_factors[,i])) * 4 + 2
+}
+
+# Generate items with strong loadings
+wisdm_error_sd <- 0.8
+
+# Auto items (factor 1)
+sim_input$auto1 <- pmax(1, pmin(7, round(wisdm_factors[,1] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$auto2 <- pmax(1, pmin(7, round(wisdm_factors[,1] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$auto3 <- pmax(1, pmin(7, round(wisdm_factors[,1] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$auto4 <- pmax(1, pmin(7, round(wisdm_factors[,1] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# LOC items (factor 2)
+sim_input$loc1 <- pmax(1, pmin(7, round(wisdm_factors[,2] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$loc2 <- pmax(1, pmin(7, round(wisdm_factors[,2] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$loc3 <- pmax(1, pmin(7, round(wisdm_factors[,2] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$loc4 <- pmax(1, pmin(7, round(wisdm_factors[,2] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# Tolerance items (factor 3)
+sim_input$tol1 <- pmax(1, pmin(7, round(wisdm_factors[,3] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$tol2 <- pmax(1, pmin(7, round(wisdm_factors[,3] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$tol3 <- pmax(1, pmin(7, round(wisdm_factors[,3] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$tol4 <- pmax(1, pmin(7, round(wisdm_factors[,3] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# Craving items (factor 4)
+sim_input$craving1 <- pmax(1, pmin(7, round(wisdm_factors[,4] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$craving2 <- pmax(1, pmin(7, round(wisdm_factors[,4] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$craving3 <- pmax(1, pmin(7, round(wisdm_factors[,4] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$craving4 <- pmax(1, pmin(7, round(wisdm_factors[,4] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# Taste items (factor 5)
+sim_input$taste1 <- pmax(1, pmin(7, round(wisdm_factors[,5] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$taste2 <- pmax(1, pmin(7, round(wisdm_factors[,5] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$taste3 <- pmax(1, pmin(7, round(wisdm_factors[,5] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# Cognitive enhancement items (factor 6)
+sim_input$cog_e1 <- pmax(1, pmin(7, round(wisdm_factors[,6] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$cog_e2 <- pmax(1, pmin(7, round(wisdm_factors[,6] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$cog_e3 <- pmax(1, pmin(7, round(wisdm_factors[,6] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# Weight control items (factor 7)
+sim_input$w_control1 <- pmax(1, pmin(7, round(wisdm_factors[,7] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$w_control2 <- pmax(1, pmin(7, round(wisdm_factors[,7] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$w_control3 <- pmax(1, pmin(7, round(wisdm_factors[,7] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# Cue items (factor 8)
+sim_input$cue1 <- pmax(1, pmin(7, round(wisdm_factors[,8] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$cue2 <- pmax(1, pmin(7, round(wisdm_factors[,8] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$cue3 <- pmax(1, pmin(7, round(wisdm_factors[,8] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# Affect items (factor 9)
+sim_input$affect1 <- pmax(1, pmin(7, round(wisdm_factors[,9] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$affect2 <- pmax(1, pmin(7, round(wisdm_factors[,9] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$affect3 <- pmax(1, pmin(7, round(wisdm_factors[,9] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# Attachment items (factor 10)
+sim_input$attach1 <- pmax(1, pmin(7, round(wisdm_factors[,10] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$attach2 <- pmax(1, pmin(7, round(wisdm_factors[,10] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$attach3 <- pmax(1, pmin(7, round(wisdm_factors[,10] + rnorm(n_total, 0, wisdm_error_sd))))
+
+# Social items (factor 11)
+sim_input$social1 <- pmax(1, pmin(7, round(wisdm_factors[,11] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$social2 <- pmax(1, pmin(7, round(wisdm_factors[,11] + rnorm(n_total, 0, wisdm_error_sd))))
+sim_input$social3 <- pmax(1, pmin(7, round(wisdm_factors[,11] + rnorm(n_total, 0, wisdm_error_sd))))
+
+cat("Data for the WISDM-37 variables have been simulated \n")
+```
+
+
+```{r}
+# Simulate data for attention checks
+
+# Attention check A (correct answer: 3)
+probs_a <- rep(0.05, 7)
+probs_a[3] <- 0.65  # Setting a higher probability for the correct answer
+sim_input$attention_check_a <- sample(1:7, 
+                                      n_total, 
+                                      replace = TRUE, 
+                                      prob = probs_a
+                                      )
+
+# Attention check B (correct answer: 6)
+probs_b <- rep(0.05, 7)
+probs_b[6] <- 0.65 # Setting a higher probability for the correct answer
+sim_input$attention_check_b <- sample(1:7, 
+                                      n_total, 
+                                      replace = TRUE, 
+                                      prob = probs_b
+                                      )
+
+cat("Data for the attention check variables have been simulated \n")
+```
+
+
+```{r}
+# Simulate data for the FTND variables
+
+# Cigarette FTND
+sim_input$cigg_f1 <- sample(0:3, n_total, replace = TRUE, prob = c(0.3, 0.3, 0.2, 0.2))
+sim_input$cigg_f2 <- sample(0:1, n_total, replace = TRUE, prob = c(0.6, 0.4))
+sim_input$cigg_f3 <- sample(0:1, n_total, replace = TRUE, prob = c(0.5, 0.5))
+sim_input$cigg_f4 <- sample(0:3, n_total, replace = TRUE, prob = c(0.4, 0.3, 0.2, 0.1))
+sim_input$cigg_f5 <- sample(0:1, n_total, replace = TRUE, prob = c(0.7, 0.3))
+sim_input$cigg_f6 <- sample(0:1, n_total, replace = TRUE, prob = c(0.8, 0.2))
+
+# E-cigarette FTND (with special coding)
+sim_input$ecigg_f1 <- sample(c("0", "1", "2", "0_1", "0_2", "1_2", "2_2"), 
+                            n_total, replace = TRUE,
+                            prob = c(0.35, 0.20, 0.15, 0.10, 0.10, 0.05, 0.05))
+sim_input$ecigg_f2 <- sample(0:1, n_total, replace = TRUE, prob = c(0.6, 0.4))
+sim_input$ecigg_f3 <- sample(c("0", "1", "2", "0_1", "0_2", "1_2", "2_2"),
+                            n_total, replace = TRUE,
+                            prob = c(0.35, 0.20, 0.15, 0.10, 0.10, 0.05, 0.05))
+sim_input$ecigg_f4 <- sample(c("0", "1", "2", "0_1", "0_2", "1_2", "2_2"),
+                            n_total, replace = TRUE,
+                            prob = c(0.35, 0.20, 0.15, 0.10, 0.10, 0.05, 0.05))
+sim_input$ecigg_f5 <- sample(0:3, n_total, replace = TRUE, prob = c(0.4, 0.3, 0.2, 0.1))
+sim_input$ecigg_f6 <- sample(0:1, n_total, replace = TRUE, prob = c(0.8, 0.2))
+
+# Hookah FTND
+sim_input$h_f1 <- sample(0:3, n_total, replace = TRUE, prob = c(0.5, 0.3, 0.15, 0.05))
+sim_input$h_f2 <- sample(0:1, n_total, replace = TRUE, prob = c(0.8, 0.2))
+sim_input$h_f3 <- sample(0:1, n_total, replace = TRUE, prob = c(0.7, 0.3))
+sim_input$h_f4 <- sample(0:3, n_total, replace = TRUE, prob = c(0.6, 0.25, 0.1, 0.05))
+sim_input$h_f5 <- sample(0:1, n_total, replace = TRUE, prob = c(0.9, 0.1))
+sim_input$h_f6 <- sample(0:1, n_total, replace = TRUE, prob = c(0.85, 0.15))
+
+cat("Data for the FTND variables have been simulated \n")
+```
+
+
+```{r}
+# Introduce data issues based on pre-specified parameters
+
+# Set failed attention checks for some participants
+fail_attention <- sample(n_total, 
+                         n_inattentive
+                         )
+sim_input$attention_check_a[fail_attention[1:(length(fail_attention)/2)]] <- 
+  sample(c(1, 2, 4, 5, 6, 7), length(fail_attention)/2, replace = TRUE)
+
+sim_input$attention_check_b[fail_attention[((length(fail_attention)/2)+1):length(fail_attention)]] <- 
+  sample(c(1, 2, 3, 4, 5, 7), length(fail_attention)/2, replace = TRUE)
+
+# Set non-undergraduates
+non_undergrad_idx <- sample(which(sim_input$undergrad_now == "Yes"),
+                           min(n_non_undergrad, sum(sim_input$undergrad_now == "Yes"))
+                           )
+sim_input$undergrad_now[non_undergrad_idx] <- "No"
+
+# Set non-smokers
+non_smoker_idx <- sample(which(sim_input$smoke_stat != "non_smoker"),
+                        min(n_non_smokers, sum(sim_input$smoke_stat != "non_smoker"))
+                        )
+sim_input$smoke_stat[non_smoker_idx] <- "non_smoker"
+
+# Set fast respondents
+fast_idx <- sample(n_total, 
+                   n_fast_responders
+                   )
+sim_input$response_time[fast_idx] <- sample(10:50, length(fast_idx), replace = TRUE)
+
+cat("Data issues have been introduced \n")
+```
+
+```{r}
+# Save CSV
+write.csv(sim_input, 
+          "sim_input.csv", 
+          row.names = FALSE
+          )
+
+cat("Simulated data have been saved \n")
+```
+
+
+
+
+
+
