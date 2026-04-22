@@ -25,7 +25,8 @@ This repository contains `explore_nictotine_dependence.Rmd` — an R Markdown sc
 ---
 
 ## Files in this repo
-- `explore_nictotine_dependence.Rmd` — R Markdown script used for data analysis.
+- `explore_nictotine_dependence.R` — R Script.
+- `explore_nictotine_dependence.Rmd` — R Markdown (script + narrative + results).
 - `nicotine_dataset.csv` — CSV file containing the data used for statistical analysis (Pending publication)
 - `analysis_report.pdf` — Rendered PDF report for the complete analysis workflow.
 - `Heatmaps.xlsx` — Excel file containing the item-item, item-factor, and factor-factor correlation matrices.
