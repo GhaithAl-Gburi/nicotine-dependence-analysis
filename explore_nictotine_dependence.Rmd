@@ -1,0 +1,1242 @@
+---
+title: 'Nicotine dependence and cessation: Reproducible Report'
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+  html_document:
+    toc: true
+    df_print: paged
+---
+
+\newpage
+
+# Settings
+
+## Set working environment
+
+```{r}
+#clear R Environment and set the seed
+rm(list=ls())
+
+# Print the current R version
+R.version.string
+
+# Set RNG seed
+set.seed(2000)
+```
+
+## Required package
+
+dplyr and ggplot2     : Data manipulation and visualization.
+
+gtsummary and broom   : Sample characteristic table
+
+writexl               : Write results into Microsoft Excel.
+
+lavaan and semTools   : Confirmatory factor analysis and composite reliability.
+
+psych                 : Corrected item-total Spearman's rank correlation.
+
+robustbase and car    : MM-estimator regression
+
+ppcor                 : Partial Spearman's rank correlation.
+
+rstatix               : Kruskal-Wallis test and effect size
+
+```{r}
+packages <- c("dplyr", "ggplot2", "gtsummary","broom", 
+              "writexl",
+              "lavaan","semTools","psych",
+              "robustbase","car","ppcor",
+              "rstatix")
+
+for (package in packages) {
+  
+  if (!requireNamespace(package, quietly = TRUE))
+    install.packages(package)
+  
+  suppressPackageStartupMessages(library(package, character.only = TRUE))
+  
+}
+```
+
+\newpage
+
+## Import and inspect data attributes
+
+```{r}
+# load the data file
+data <- as.data.frame(read.csv("nicotine_dataset.csv"))
+
+attributes(data)[names(attributes(data)) != "row.names"]
+```
+
+\newpage
+
+# Data preprocessing
+
+## Data cleaning
+
+```{r}
+# Convert coded dichotomous columns into labelled factors 
+coded_cols <- c(14:19)
+data[,coded_cols] <- lapply(data[,coded_cols], 
+                            function(x) factor(x, levels = c(0, 1), 
+                                               labels = c("No", "Yes"))
+                            )
+
+# Data cleaning
+cols_to_change <- c("ecigg_f1","ecigg_f3","ecigg_f4")
+data[,cols_to_change] <- lapply(data[,cols_to_change], 
+                                function(x) {
+  x[x == "0_1"] <- "0"
+  x[x == "0_2"] <- "0"
+  x[x == "1_2"] <- "1"
+  x[x == "2_2"] <- "2"
+  return(x)
+  }
+  )
+
+# Convert cleaned columns into numeric
+data[, cols_to_change] <- lapply(data[, cols_to_change], function(x) {
+  as.numeric(as.character(x))
+})
+```
+
+## Exclude duplicate responses
+
+```{r}
+cat("No. of responses: ", 
+    nrow(data), 
+    "\n"
+    )
+data_unique <- data[!duplicated(data$deviceid),]
+cat("No. of unique responses: ", 
+    nrow(data_unique), 
+    "\n"
+    )
+```
+
+\newpage
+
+## Exclude non-undergraduate students
+
+```{r}
+data_under <- data_unique[data_unique$undergrad_now == "yes", ]
+cat("No. of undergraduate participants: ", 
+    nrow(data_under), 
+    "\n"
+    )
+```
+
+## Exclude non-smokers
+
+```{r}
+sample <- data_under[data_under$smoke_stat != "none_smoker", ]
+cat("No. of responses following exclusion of non-smokers: ", 
+    nrow(sample),
+    "\n"
+    )
+```
+
+## Exclude responses with invalid age
+
+```{r}
+sample <- sample[!is.na(sample$age), ]
+cat("No. of responses following exclusion based on age (15 years - 70 years): ", 
+    nrow(sample),
+    "\n"
+    )
+```
+
+## Exclude responses with invalid university
+
+```{r}
+sample <- sample[!is.na(sample$university_college), ]
+cat("No. of responses following exclusion based on valid university: ", 
+    nrow(sample),
+    "\n"
+    )
+```
+
+\newpage
+
+## Exclude students living outside of Iraq
+
+```{r}
+sample <- sample[sample$province != "outside_Iraq", ]
+
+cat("No. of responses following exclusion based on province (outside_Iraq removed): ", 
+    nrow(sample),
+    "\n"
+)
+```
+
+## Exclude inattentive responses
+
+```{r}
+# Filter using attention check items
+sample$attention <- ifelse(
+   (!is.na(sample$attention_check_a) & sample$attention_check_a == 3) |
+   (!is.na(sample$attention_check_b) & sample$attention_check_b == 6),
+   "Yes", "No"
+)
+data_attentive <- sample[sample$attention == "Yes", ]
+cat("No. of attentive participants: ", 
+    nrow(data_attentive), 
+    "\n"
+    )
+
+# Filter using response time (12 is subtracted for ID and multiple-response variables)
+data_attentive$response_threshold <- apply(data_attentive, 1, 
+                                           function(row) (sum(!is.na(row))*2)-12)
+data_cleaned <- data_attentive[data_attentive$response_time > data_attentive$response_threshold, ]
+cat("No. of responses following exclusion based on response time: ", 
+    nrow(data_cleaned),
+    "\n"
+    )
+```
+
+\newpage
+
+# Data summarization
+
+```{r}
+# Merge smoking method columns for smokers and ex smokers into common columns
+data_cleaned <- data_cleaned %>%
+  mutate(cigarettes   = coalesce(smoke_now.cigarettes, smoke_past.cigarettes),
+         e_cigarettes = coalesce(smoke_now.e_cigarettes, smoke_past.e_cigarettes),
+         hookah       = coalesce(smoke_now.hookah, smoke_past.hookah),
+         smoke_most   = coalesce(smoke_most_current, smoke_most_ex),
+  ) %>% mutate(across(c(cigarettes, e_cigarettes, hookah, smoke_most), as.factor))
+```
+
+\newpage
+
+## Table 1. Sample characteristics
+
+```{r}
+# Convert categorical variables to factors
+data_cleaned <- data_cleaned %>%
+  mutate(across(c(sex, ethnicity, marital_stat, residence,
+                  cigarettes, e_cigarettes, hookah, smoke_most,
+                  speciality),as.factor
+                )
+         )
+
+# Build Table 1
+tbl <- data_cleaned %>%
+  tbl_summary(by        = smoke_stat,
+              include   = c(age, sex, ethnicity, marital_stat, residence,
+                          speciality,
+                          cigarettes, e_cigarettes, hookah, smoke_most),
+              type      = list(age ~ "continuous"),
+              statistic = list(age ~ "{median} ({p25}, {p75})",
+                               all_categorical() ~ "{n} ({p}%)"),
+              missing = "ifany")
+
+# Compare between groups (excluding field of study)
+tbl <- tbl %>%
+  add_p(test = list(age ~ "wilcox.test",
+                    sex ~ "fisher.test",
+                    ethnicity ~ "fisher.test",
+                    marital_stat ~ "fisher.test",
+                    residence ~ "fisher.test",
+                    cigarettes ~ "fisher.test",
+                    e_cigarettes ~ "fisher.test",
+                    hookah ~ "fisher.test",
+                    smoke_most ~ "fisher.test"
+                    ), 
+        ) %>%
+  
+  # Ensure p-values have at least 3 decimal place
+  modify_fmt_fun(p.value = function(x) style_pvalue(x, digits = 3)) %>%
+  
+  # Ensure numeric summaries have at least 1 decimal place
+  modify_fmt_fun(all_continuous() ~ function(x) style_number(x, digits = 1),
+                 all_categorical() ~ function(x) style_number(x, digits = 1))
+```
+
+\newpage
+
+```{r}
+# Display table (at end of pdf)
+tbl
+```
+
+## Sample geographic distribution
+
+```{r}
+result <- data_cleaned %>%
+  count(province) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+result
+```
+
+\newpage
+
+# Item-item correlation matrix
+
+## Brief Wisconsin Inventory of Smoking Dependence Motives (WISDM-37)
+
+```{r}
+# Store WISDM-37 item names
+wisdm37_items <- c("auto1","auto2","auto3","auto4",
+                   "loc1","loc2","loc3","loc4",
+                   "tol1","tol2","tol3","tol4",
+                   "craving1","craving2","craving3","craving4",
+                   "taste1","taste2","taste3",
+                   "cog_e1","cog_e2","cog_e3",
+                   "w_control1","w_control2","w_control3",
+                   "cue1","cue2","cue3",
+                   "affect1","affect2","affect3",
+                   "attach1","attach2","attach3",
+                   "social1","social2","social3")
+
+# Calculate Spearman's correlation matrix
+wisdm37_cor <- as.data.frame(cor(data_cleaned[,wisdm37_items], 
+                                 method = "spearman",
+                                 use    = "pairwise.complete.obs"))
+
+# Write into an excel file
+write_xlsx(wisdm37_cor, "WISDM-37 item-item correlation matrix.xlsx")
+```
+
+## Reasons For Quitting (RFQ)
+
+```{r}
+# Store RFQ item names
+rfq_items <- c("hc1","hc2","hc3","hc4","hc5",
+               "sc1","sc2","sc3","sc4","sc5",
+               "ir1","ir2","ir3","ir4","ir5",
+               "sp1","sp2","sp3","sp4","sp5")
+
+# Calculate Spearman's correlation matrix
+rfq_cor <- as.data.frame(cor(data_cleaned[,rfq_items], 
+                             method = "spearman",
+                             use    = "pairwise.complete.obs"))
+
+# Write into an excel file
+write_xlsx(rfq_cor, "RFQ item-item correlation matrix.xlsx")
+```
+
+\newpage
+
+# WISDM-37 psychometric analysis
+
+## Confirmatory factor analysis
+
+```{r}
+df_smoker <- data_cleaned %>%
+  filter(smoke_stat == "smoker")
+```
+
+![WISDM-37 models](WISDM_models.jpg)
+
+\newpage
+
+### MLR Model 1: 1-factor solution
+
+```{r}
+cont_mod1 <-'f =~ auto1 + auto2 + auto3 + auto4 + 
+                  loc1 + loc2 + loc3 + loc4 + 
+                  tol1 + tol2 + tol3 + tol4 + 
+                  craving1 + craving2 + craving3 + craving4 +
+                  taste1 + taste2 + taste3 +
+                  cog_e1 + cog_e2 + cog_e3 +
+                  w_control1 + w_control2 + w_control3 +
+                  cue1 + cue2 + cue3 + 
+                  affect1 + affect2 + affect3 + 
+                  attach1 + attach2 + attach3 +
+                  social1 + social2 + social3
+                  '
+cont_mod1_fit <- cfa(cont_mod1, data = df_smoker, estimator = "MLR")
+summary(cont_mod1_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### MLR Model 2: 2-factor solution
+
+```{r}
+cont_mod2 <- 'pdm =~ auto1 + auto2 + auto3 + auto4 + 
+                     loc1 + loc2 + loc3 + loc4 + 
+                     tol1 + tol2 + tol3 + tol4 + 
+                     craving1 + craving2 + craving3 + craving4
+                     
+              sdm =~ taste1 + taste2 + taste3 +
+                     cog_e1 + cog_e2 + cog_e3 +
+                     w_control1 + w_control2 + w_control3 +
+                     cue1 + cue2 + cue3 + 
+                     affect1 + affect2 + affect3 + 
+                     attach1 + attach2 + attach3 +
+                     social1 + social2 +social3
+                     '
+cont_mod2_fit <- cfa(cont_mod2, data = df_smoker, estimator = "MLR")
+summary(cont_mod2_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### MLR Model 3: 11-factor solution
+
+```{r}
+cont_mod3 <-'#Primary dependence motives
+             auto      =~ auto1 + auto2 + auto3 + auto4
+             loc       =~ loc1 + loc2 + loc3 + loc4
+             tol       =~ tol1 + tol2 + tol3 + tol4
+             craving   =~ craving1 + craving2 + craving3 + craving4
+             
+             #Secondary dependence motives
+             taste     =~ taste1 + taste2 + taste3
+             cog_e     =~ cog_e1 + cog_e2 + cog_e3
+             w_control =~ w_control1 + w_control2 + w_control3
+             cue       =~ cue1 + cue2 + cue3
+             affect    =~ affect1 + affect2 + affect3
+             attach    =~ attach1 + attach2 + attach3
+             social    =~ social1 + social2 +social3
+             '
+cont_mod3_fit <- cfa(cont_mod3, data = df_smoker, estimator = "MLR")
+summary(cont_mod3_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### MLR Model 4: Hierarchial factor solution
+
+```{r}
+cont_mod4 <- '#1st order
+             auto      =~ auto1 + auto2 + auto3 + auto4
+             loc       =~ loc1 + loc2 + loc3 + loc4
+             tol       =~ tol1 + tol2 + tol3 + tol4
+             craving   =~ craving1 + craving2 + craving3 + craving4
+             taste     =~ taste1 + taste2 + taste3
+             cog_e     =~ cog_e1 + cog_e2 + cog_e3
+             w_control =~ w_control1 + w_control2 + w_control3
+             cue       =~ cue1 + cue2 + cue3
+             affect    =~ affect1 + affect2 + affect3
+             attach    =~ attach1 + attach2 + attach3
+             social    =~ social1 + social2 +social3
+             
+             #2nd order
+             pdm =~ auto + loc + tol + craving
+             sdm =~ taste + cog_e + w_control + cue + affect + attach + social
+             '
+cont_mod4_fit <- cfa(cont_mod4, data = df_smoker, estimator = "MLR")
+summary(cont_mod4_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### Relative fitness between MLR models
+
+```{r}
+# Model 1 vs Model 2
+lavTestLRT(cont_mod1_fit, cont_mod2_fit)
+```
+
+```{r}
+# Model 1 vs Model 3
+lavTestLRT(cont_mod1_fit, cont_mod3_fit)
+```
+
+\newpage
+
+```{r}
+# Model 1 vs Model 4
+lavTestLRT(cont_mod1_fit, cont_mod4_fit)
+```
+
+```{r}
+# Model 3 vs Model 4
+lavTestLRT(cont_mod3_fit, cont_mod4_fit)
+```
+
+\newpage
+
+### WLSMV Model 1: 1-factor solution
+
+```{r}
+ord_mod1 <- 'f =~ auto1 + auto2 + auto3 + auto4 + 
+                  loc1 + loc2 + loc3 + loc4 + 
+                  tol1 + tol2 + tol3 + tol4 + 
+                  craving1 + craving2 + craving3 + craving4 +
+                  taste1 + taste2 + taste3 +
+                  cog_e1 + cog_e2 + cog_e3 +
+                  w_control1 + w_control2 + w_control3 +
+                  cue1 + cue2 + cue3 + 
+                  affect1 + affect2 + affect3 + 
+                  attach1 + attach2 + attach3 +
+                  social1 + social2 +social3
+                  '
+ord_mod1_fit <- cfa(ord_mod1, data = df_smoker, estimator = "WLSMV", 
+                    ordered = wisdm37_items)
+summary(ord_mod1_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### WLSMV Model 2: 2-factor solution
+
+```{r}
+ord_mod2 <- 'pdm =~ auto1 + auto2 + auto3 + auto4 + 
+                     loc1 + loc2 + loc3 + loc4 + 
+                     tol1 + tol2 + tol3 + tol4 + 
+                     craving1 + craving2 + craving3 + craving4
+                     
+              sdm =~ taste1 + taste2 + taste3 +
+                     cog_e1 + cog_e2 + cog_e3 +
+                     w_control1 + w_control2 + w_control3 +
+                     cue1 + cue2 + cue3 + 
+                     affect1 + affect2 + affect3 + 
+                     attach1 + attach2 + attach3 +
+                     social1 + social2 +social3
+                     '
+ord_mod2_fit <- cfa(ord_mod2, data = df_smoker, estimator = "WLSMV", 
+                    ordered = wisdm37_items)
+summary(ord_mod2_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### WLSMV Model 3: 11-factor solution
+
+```{r}
+ord_mod3 <- '#Primary dependence motives
+             auto      =~ auto1 + auto2 + auto3 + auto4
+             loc       =~ loc1 + loc2 + loc3 + loc4
+             tol       =~ tol1 + tol2 + tol3 + tol4
+             craving   =~ craving1 + craving2 + craving3 + craving4
+             
+             #Secondary dependence motives
+             taste     =~ taste1 + taste2 + taste3
+             cog_e     =~ cog_e1 + cog_e2 + cog_e3
+             w_control =~ w_control1 + w_control2 + w_control3
+             cue       =~ cue1 + cue2 + cue3
+             affect    =~ affect1 + affect2 + affect3
+             attach    =~ attach1 + attach2 + attach3
+             social    =~ social1 + social2 +social3
+             '
+ord_mod3_fit <- cfa(ord_mod3, data = df_smoker, estimator = "WLSMV", 
+                    ordered = wisdm37_items)
+summary(ord_mod3_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### WLSMV Model 4: Hierarchial factor solution
+
+```{r}
+ord_mod4 <- '#1st order
+             auto      =~ auto1 + auto2 + auto3 + auto4
+             loc       =~ loc1 + loc2 + loc3 + loc4
+             tol       =~ tol1 + tol2 + tol3 + tol4
+             craving   =~ craving1 + craving2 + craving3 + craving4
+             taste     =~ taste1 + taste2 + taste3
+             cog_e     =~ cog_e1 + cog_e2 + cog_e3
+             w_control =~ w_control1 + w_control2 + w_control3
+             cue       =~ cue1 + cue2 + cue3
+             affect    =~ affect1 + affect2 + affect3
+             attach    =~ attach1 + attach2 + attach3
+             social    =~ social1 + social2 +social3
+             
+             #2nd order
+             pdm =~ auto + loc + tol + craving
+             sdm =~ taste + cog_e + w_control + cue + affect + attach + social
+             '
+ord_mod4_fit <- cfa(ord_mod4, data = df_smoker, estimator = "WLSMV", 
+                    ordered = wisdm37_items)
+summary(ord_mod4_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### Relative fitness between WLSMV models
+
+```{r}
+# Model 1 vs Model 2
+lavTestLRT(ord_mod1_fit, ord_mod2_fit)
+```
+
+```{r}
+# Model 1 vs Model 3
+lavTestLRT(ord_mod1_fit, ord_mod3_fit)
+```
+
+\newpage
+
+```{r}
+# Model 1 vs Model 4
+lavTestLRT(ord_mod1_fit, ord_mod4_fit)
+```
+
+\newpage
+
+## Corrected item-total correlation
+
+```{r}
+# Define vectors to store item names
+wisdm_items <- list(AUTO = c("auto1","auto2","auto3","auto4"),
+                    LOC = c("loc1","loc2","loc3","loc4"),
+                    TOL = c("tol1","tol2","tol3","tol4"),
+                    CRAVING = c("craving1","craving2","craving3","craving4"),
+                    TASTE = c("taste1","taste2","taste3"),
+                    COG_E = c("cog_e1","cog_e2","cog_e3"),
+                    W_CONTROL = c("w_control1","w_control2","w_control3"),
+                    CUE = c("cue1","cue2","cue3"),
+                    AFFECT = c("affect1","affect2","affect3"),
+                    ATTACH = c("attach1","attach2","attach3"),
+                    SOCIAL = c("social1","social2","social3"))
+
+# Define factors
+wisdm_scales <- lapply(wisdm_items, function(items) {
+  data_cleaned %>% dplyr::select(dplyr::all_of(items))
+})
+
+# Perform reliability analysis and store item statistics
+wisdm_rel <- lapply(wisdm_scales, function(df) {
+  alpha(cor(df, method = "spearman", use = "pairwise.complete.obs"))
+})
+wisdm_item_stats <- lapply(wisdm_rel, function(x) {
+  x$item.stats
+})
+
+# Store results into a single data frame
+wisdm_citc <- bind_rows(lapply(names(wisdm_item_stats), function(scale) {
+  df <- wisdm_item_stats[[scale]]
+  df$Item <- rownames(df)
+  df$Scale <- scale
+  df}))
+```
+
+\newpage
+
+```{r}
+# Display corrected item-total correlations
+wisdm_citc %>% dplyr::select(Scale, Item, r.drop)
+```
+
+\newpage
+
+## Item-factor correlations
+
+```{r}
+# Calculate the mean score for each WISDM-37 factor
+data_cleaned$auto <- rowMeans(data_cleaned[, wisdm_items$AUTO], na.rm = TRUE)
+data_cleaned$loc <- rowMeans(data_cleaned[, wisdm_items$LOC], na.rm = TRUE)
+data_cleaned$tol <- rowMeans(data_cleaned[, wisdm_items$TOL], na.rm = TRUE)
+data_cleaned$craving <- rowMeans(data_cleaned[, wisdm_items$CRAVING], na.rm = TRUE)
+data_cleaned$taste <- rowMeans(data_cleaned[, wisdm_items$TASTE], na.rm = TRUE)
+data_cleaned$cog_e <- rowMeans(data_cleaned[, wisdm_items$COG_E], na.rm = TRUE)
+data_cleaned$w_control <- rowMeans(data_cleaned[, wisdm_items$W_CONTROL], na.rm = TRUE)
+data_cleaned$cue <- rowMeans(data_cleaned[, wisdm_items$CUE], na.rm = TRUE)
+data_cleaned$affect <- rowMeans(data_cleaned[, wisdm_items$AFFECT], na.rm = TRUE)
+data_cleaned$attach <- rowMeans(data_cleaned[, wisdm_items$ATTACH], na.rm = TRUE)
+data_cleaned$social <- rowMeans(data_cleaned[, wisdm_items$SOCIAL], na.rm = TRUE)
+
+# Select WISDM-37 items and factors
+all_items <- data_cleaned[, unlist(wisdm_items)]
+all_factors <- data_cleaned[, c("auto","loc","tol","craving","taste",
+                               "cog_e","w_control","cue","affect",
+                               "attach","social")]
+
+# Calculate item-factor correlations
+item_factor_cor <- as.data.frame(cor(all_items, all_factors,
+                                     method = "spearman",
+                                     use = "pairwise.complete.obs"))
+
+# Write into an excel file
+write_xlsx(item_factor_cor, "Item-factor correlation matrix.xlsx")
+```
+
+## Factor-factor correlations
+
+```{r}
+# Calculate factor-factor correlations
+factor_factor_cor <- as.data.frame(cor(all_factors,
+                                       method = "spearman",
+                                       use = "pairwise.complete.obs"))
+
+# Write into an excel file
+write_xlsx(factor_factor_cor, "Factor-factor correlation matrix.xlsx")
+```
+
+\newpage
+
+## Composite reliability
+
+```{r}
+# Select the most plausible WISDM-37 model
+cont_select_fit <- cont_mod3_fit
+
+# Calculate composite reliability for the selected continuous and ordinal WISDM-37 model
+cont_rel <- compRelSEM(cont_select_fit)
+print(cont_rel, digits = 3)
+```
+
+\newpage
+
+## Modification indices
+
+```{r}
+# Get modification indices
+wisdm_mi <- modificationIndices(cont_select_fit)
+
+# Sort by decreasing MI value
+wisdm_mi_sorted <- wisdm_mi[order(wisdm_mi$mi, decreasing = TRUE), ]
+
+# Inspect top 10 modifications
+head(wisdm_mi_sorted, 10)
+```
+
+\newpage
+
+# Smoking Motives and Nicotine Dependence Across Smoking Method
+
+```{r}
+# Define vectors to store item names for each smoking method
+cigg_items  <- c("cigg_f1","cigg_f2","cigg_f3","cigg_f4","cigg_f5","cigg_f6")
+ecigg_items <- c("ecigg_f1","ecigg_f2","ecigg_f3","ecigg_f4","ecigg_f5","ecigg_f6")
+h_items     <- c("h_f1","h_f2","h_f3","h_f4","h_f5","h_f6")
+
+# Calculate the Fagerström Test for Nicotine Dependence scores
+data_cleaned$cigg_f <- ifelse(rowSums(is.na(data_cleaned[, cigg_items])) == 0,
+                              rowSums(data_cleaned[, cigg_items]),NA)
+data_cleaned$ecigg_f <- ifelse(rowSums(is.na(data_cleaned[, ecigg_items])) == 0,
+                               rowSums(data_cleaned[, ecigg_items]),NA)
+
+data_cleaned$h_f <- ifelse(rowSums(is.na(data_cleaned[, h_items])) == 0,
+                           rowSums(data_cleaned[, h_items]),NA)
+```
+
+## Distribution of nicotine dependence across smoking methods
+
+### Prepare the data
+
+```{r}
+# Create color palettes for smoking methods
+
+# 5-category palette (for traditional and E-cigarettes)
+cols_5 <- c("No dependence"              = "#22C55E",
+            "Low dependence"             = "#FACC15",
+            "Low to moderate dependence" = "#F97316",
+            "Moderate dependence"        = "#EF4444",
+            "High dependence"            = "#000000")
+
+# 3-category palette (for Hookah)
+cols_3 <- c("Low dependence"      = "#FACC15",
+            "Moderate dependence" = "#F97316",
+            "High dependence"     = "#EF4444")
+```
+
+\newpage
+
+```{r}
+# 5 categories (for traditional and E-cigarettes)
+categorize_5 <- function(x) {
+  factor(case_when(      x == 0      ~ "No dependence",
+                         x %in% 1:2  ~ "Low dependence",
+                         x %in% 3:4  ~ "Low to moderate dependence",
+                         x %in% 5:7  ~ "Moderate dependence",
+                         x >= 8      ~ "High dependence"),
+         levels = names(cols_5))}
+
+# 3 categories (for Hookah)
+categorize_3 <- function(x) {
+  factor(case_when(x %in% 0:1 ~ "Low dependence",
+                   x %in% 2:3 ~ "Moderate dependence",
+                   x >= 4     ~ "High dependence"),
+         levels = names(cols_3))}
+
+# Categorize variables
+data_cleaned <- data_cleaned %>%
+  mutate(cigg_cat  = categorize_5(cigg_f),
+         ecigg_cat = categorize_5(ecigg_f),
+         h_cat     = categorize_3(h_f))
+```
+
+\newpage
+
+### Visualize distributions
+
+```{r}
+# Define a function to create waffle plots
+plot_waffle <- function(data, var, colors, title = "") {
+  
+  # Summarize counts and percentages
+  summary_df <- data %>%
+    filter(!is.na(.data[[var]])) %>%
+    count(.data[[var]], .drop = FALSE) %>%
+    rename(category = 1) %>%
+    mutate(pct = n / sum(n) * 100)
+  
+  # Convert percentages to whole-number dots using largest-remainder
+  floor_pct <- floor(summary_df$pct)
+  need      <- 100 - sum(floor_pct)
+  top_idx   <- order(summary_df$pct - floor_pct, decreasing = TRUE)
+  dots      <- floor_pct
+  if (need > 0) dots[top_idx[seq_len(need)]] <- dots[top_idx[seq_len(need)]] + 1
+  summary_df$dots <- dots
+  
+  # Build 10-column grid coordinates, one row per dot
+  waffle_df <- data.frame(category = rep(summary_df$category, summary_df$dots)
+  ) %>% mutate(id = row_number(),
+               x  = ((id - 1) %%  10) + 1,
+               y  = ((id - 1) %/% 10) + 1)
+  
+  # Legend labels show real % and real n
+  leg_labels <- with(summary_df,
+    setNames(sprintf("%.2f%%  %d  %s", pct, n, category), category))
+  
+  # Plot
+  ggplot(waffle_df, aes(x = x, y = -y, fill = category)) +
+    geom_point(shape = 21, size = 7, colour = "black", stroke = 0.5) +
+    scale_fill_manual(values = colors, labels = leg_labels, name = NULL) +
+    coord_equal() +
+    labs(title = title) +
+    theme_void() +
+    theme(plot.title       = element_text(face = "bold", size = 14, hjust = 0),
+          legend.text      = element_text(size = 11),
+          legend.key       = element_rect(fill = "white", colour = NA),
+          legend.position  = "right",
+          plot.background  = element_rect(fill = "white", colour = NA),
+          panel.background = element_rect(fill = "white", colour = NA))}
+```
+
+\newpage
+
+### Visualize distributions
+
+```{r}
+# Generate plots
+p1 <- plot_waffle(data_cleaned, "cigg_cat",  cols_5, 
+                  "Cigarette dependence among participants")
+p2 <- plot_waffle(data_cleaned, "ecigg_cat", cols_5, 
+                  "E-cigarette dependence among participants")
+p3 <- plot_waffle(data_cleaned, "h_cat",     cols_3, 
+                  "Hookah dependence among participants")
+
+# Display plots
+p1; p2; p3
+```
+
+\newpage
+
+## Hypothesis testing: Data preparation
+
+```{r}
+# Store the names of included motives 
+wisdm_factors <- c("auto","loc","tol","craving","taste",
+                   "cog_e","w_control","affect","attach","social")
+
+# Standardize predictors
+data_cleaned[wisdm_factors] <- scale(data_cleaned[wisdm_factors])
+```
+
+\newpage
+
+## Hypothesis testing: Traditional Cigarette Users
+
+```{r}
+# Subset data
+data_cc <- na.omit(data_cleaned[, c("cigg_f", wisdm_factors)])
+```
+
+### MM-estimator regression model
+
+```{r}
+wisdm37_cigg <- lmrob(cigg_f ~ auto + loc + tol + craving + taste + cog_e +
+                        w_control + affect + attach + social,
+                      data = data_cc,
+                      k.max = 1000)
+summary(wisdm37_cigg)
+```
+
+### Squared 0-order Spearman's rank correlation
+
+```{r}
+cor_vals <- cor(data_cc[, wisdm_factors],
+                data_cc$cigg_f,
+                method = "spearman")
+cor.wisdm37.cigg <- data.frame(Factor = wisdm_factors,
+                               R2_percent = (cor_vals^2),
+                               row.names = NULL)
+print(cor.wisdm37.cigg)
+```
+
+\newpage
+
+### Squared partial Spearman's rank correlation
+
+```{r}
+pcor_result <- pcor(data_cc[, c("cigg_f", wisdm_factors)],
+                    method = "spearman")
+pcor.wisdm37.cigg <- data.frame(Factor = wisdm_factors,
+                                Partial_R2_percent = 
+                                  (pcor_result$estimate["cigg_f", 
+                                                        wisdm_factors]^2),
+                                row.names = NULL)
+print(pcor.wisdm37.cigg)
+```
+
+\newpage
+
+## Hypothesis testing: E-Cigarette Users
+
+```{r}
+# Subset data
+data_ec <- na.omit(data_cleaned[, c("ecigg_f", wisdm_factors)])
+```
+
+### MM-estimator regression model
+
+```{r}
+wisdm37_ecigg <- lmrob(ecigg_f ~ auto + loc + tol + craving + taste + 
+                         cog_e + w_control + affect + attach + social, 
+                       data = data_ec,
+                       k.max = 1000)
+summary(wisdm37_ecigg)
+```
+
+### Squared 0-order Spearman's rank correlation
+
+```{r}
+cor_vals <- cor(data_ec[, wisdm_factors],
+                data_ec$ecigg_f,
+                method = "spearman")
+cor.wisdm37.ecigg <- data.frame(Factor = wisdm_factors,
+                               R2_percent = (cor_vals^2),
+                               row.names = NULL)
+print(cor.wisdm37.ecigg)
+```
+
+\newpage
+
+### Squared partial Spearman's rank correlation
+
+```{r}
+pcor_result <- pcor(data_ec[, c("ecigg_f", wisdm_factors)],
+                    method = "spearman")
+pcor.wisdm37.ecigg <- data.frame(Factor = wisdm_factors,
+                                Partial_R2_percent = 
+                                  (pcor_result$estimate["ecigg_f", 
+                                                        wisdm_factors]^2),
+                                row.names = NULL)
+print(pcor.wisdm37.ecigg)
+```
+
+\newpage
+
+## Hypothesis testing: Hookah users
+
+```{r}
+# Subset data
+data_h <- na.omit(data_cleaned[, c("h_f", wisdm_factors)])
+```
+
+### MM-estimator regression model
+
+```{r}
+wisdm37_h <- lmrob(h_f ~ auto + loc + tol + craving + taste + 
+                     cog_e + w_control + affect + attach + social,
+                   data = data_h,
+                   k.max = 1000)
+summary(wisdm37_h)
+```
+
+### Squared 0-order Spearman's rank correlation
+
+```{r}
+cor_vals <- cor(data_h[, wisdm_factors],
+                data_h$h_f,
+                method = "spearman")
+cor.wisdm37.h <- data.frame(Factor = wisdm_factors,
+                            R2_percent = (cor_vals^2),
+                            row.names = NULL)
+print(cor.wisdm37.h)
+```
+
+\newpage
+
+### Squared partial Spearman's rank correlation
+
+```{r}
+pcor_result <- pcor(data_h[, c("h_f", wisdm_factors)],
+                    method = "spearman")
+pcor.wisdm37.h <- data.frame(Factor = wisdm_factors,
+                             Partial_R2_percent = 
+                               (pcor_result$estimate["h_f", 
+                                                     wisdm_factors]^2),
+                            row.names = NULL)
+print(pcor.wisdm37.h)
+```
+
+\newpage
+
+## Hypothesis testing: combined model
+
+```{r}
+# Standardize nicotine dependence scales
+data_cleaned$cigg_z  <- scale(data_cleaned$cigg_f)
+data_cleaned$ecigg_z <- scale(data_cleaned$ecigg_f)
+data_cleaned$h_z     <- scale(data_cleaned$h_f)
+
+# Combine standardized nicotine dependence columns
+data_cleaned$combined_f <- ifelse(!is.na(data_cleaned$cigg_z), data_cleaned$cigg_z,
+                          ifelse(!is.na(data_cleaned$ecigg_z), data_cleaned$ecigg_z,
+                          ifelse(!is.na(data_cleaned$h_z), data_cleaned$h_z, NA)))
+
+# Subset data
+data_combined <- na.omit(data_cleaned[, c("combined_f", "smoke_most_current", 
+                                          wisdm_factors)])
+```
+
+### MM-estimator regression model
+
+```{r}
+wisdm37_combined <- lmrob(combined_f ~ smoke_most_current +
+                            auto + loc + tol + craving + taste + 
+                            cog_e + w_control + affect + attach + social,
+                          data = data_combined,
+                          k.max = 1000)
+summary(wisdm37_combined)
+```
+
+\newpage
+
+# RFQ psychometric analysis
+
+## Confirmatory factor analysis
+
+```{r}
+df_exsmoker <- data_cleaned %>%
+  filter(smoke_stat == "ex_smoker")
+```
+
+![RFQ models](RFQ_models.jpg)
+
+\newpage
+
+### MLR model 1: 1-factor solution
+
+```{r}
+rfq_cmod1 <-'f =~ hc1 + hc2 + hc3 + hc4 + hc5 + sc1 + sc2 + sc3 + sc4 + sc5 +
+                  ir1 + ir2 + ir3 + ir4 + ir5 + sp1 + sp2 + sp3 + sp4 + sp5
+            '
+rfq_cmod1_fit <- cfa(rfq_cmod1, data = df_exsmoker, estimator = "MLR")
+summary(rfq_cmod1_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### MLR model 2: 2-factor solution
+
+```{r}
+rfq_cmod2 <-'intrinsic =~ hc1 + hc2 + hc3 + hc4 + hc5 + sc1 + sc2 + sc3 + sc4 + sc5
+             extrinsic =~ ir1 + ir2 + ir3 + ir4 + ir5 + sp1 + sp2 + sp3 + sp4 + sp5
+             '
+rfq_cmod2_fit <- cfa(rfq_cmod2, data = df_exsmoker, estimator = "MLR")
+summary(rfq_cmod2_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### MLR model 3: 4-factor solution
+
+```{r}
+rfq_cmod3 <-'hc =~ hc1 + hc2 + hc3 + hc4 + hc5
+             sc =~ sc1 + sc2 + sc3 + sc4 + sc5
+             ir =~ ir1 + ir2 + ir3 + ir4 + ir5
+             sp =~ sp1 + sp2 + sp3 + sp4 + sp5
+             '
+rfq_cmod3_fit <- cfa(rfq_cmod3, data = df_exsmoker, estimator = "MLR")
+summary(rfq_cmod3_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### MLR model 4: Hierarchial factor solution
+
+```{r}
+rfq_cmod4 <-'#1st order
+             hc =~ hc1 + hc2 + hc3 + hc4 + hc5
+             sc =~ sc1 + sc2 + sc3 + sc4 + sc5
+             ir =~ ir1 + ir2 + ir3 + ir4 + ir5
+             sp =~ sp1 + sp2 + sp3 + sp4 + sp5
+             
+             #2nd order
+             intrinsic =~ hc + sc
+             extrinsic =~ ir + sp
+             '
+rfq_cmod4_fit <- cfa(rfq_cmod4, data = df_exsmoker, estimator = "MLR")
+summary(rfq_cmod4_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### Relative fitness between MLR models
+
+```{r}
+# Model 1 vs Model 2
+lavTestLRT(rfq_cmod1_fit, rfq_cmod2_fit)
+```
+
+```{r}
+# Model 1 vs Model 3
+lavTestLRT(rfq_cmod1_fit, rfq_cmod3_fit)
+```
+
+\newpage
+
+```{r}
+# Model 1 vs Model 4
+lavTestLRT(rfq_cmod1_fit, rfq_cmod4_fit)
+```
+
+```{r}
+# Model 3 vs Model 4
+lavTestLRT(rfq_cmod3_fit, rfq_cmod4_fit)
+```
+
+### WLSMV model 1: 1-factor solution
+
+```{r}
+#Model 1: 1-factor solution
+rfq_omod1 <- 'f =~ hc1 + hc2 + hc3 + hc4 + hc5 + sc1 + sc2 + sc3 + sc4 + sc5 +
+                   ir1 + ir2 + ir3 + ir4 + ir5 + sp1 + sp2 + sp3 + sp4 + sp5
+              '
+rfq_omod1_fit <- cfa(rfq_omod1, data = df_exsmoker, estimator = "WLSMV", 
+                     ordered = rfq_items)
+summary(rfq_omod1_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### WLSMV model 2: 2-factor solution
+
+```{r}
+rfq_omod2 <- 'intrinsic =~ hc1 + hc2 + hc3 + hc4 + hc5 + sc1 + sc2 + sc3 + sc4 + sc5
+              extrinsic =~ ir1 + ir2 + ir3 + ir4 + ir5 + sp1 + sp2 + sp3 + sp4 + sp5
+              '
+rfq_omod2_fit <- cfa(rfq_omod2, data = df_exsmoker, estimator = "WLSMV", 
+                     ordered = rfq_items)
+summary(rfq_omod2_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### WLSMV model 3: 4-factor solution
+
+```{r}
+rfq_omod3 <- 'hc =~ hc1 + hc2 + hc3 + hc4 + hc5
+              sc =~ sc1 + sc2 + sc3 + sc4 + sc5
+              ir =~ ir1 + ir2 + ir3 + ir4 + ir5
+              sp =~ sp1 + sp2 + sp3 + sp4 + sp5
+              '
+rfq_omod3_fit <- cfa(rfq_omod3, data = df_exsmoker, estimator = "WLSMV", 
+                     ordered = rfq_items)
+summary(rfq_omod3_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+### WLSMV model 4: hierarchial factor solution
+
+```{r}
+rfq_omod4 <- '#1st order
+             hc =~ hc1 + hc2 + hc3 + hc4 + hc5
+             sc =~ sc1 + sc2 + sc3 + sc4 + sc5
+             ir =~ ir1 + ir2 + ir3 + ir4 + ir5
+             sp =~ sp1 + sp2 + sp3 + sp4 + sp5
+             
+             #2nd order
+             intrinsic =~ hc + sc
+             extrinsic =~ ir + sp
+             '
+rfq_omod4_fit <- cfa(rfq_omod4, data = df_exsmoker, estimator = "WLSMV", 
+                     ordered = rfq_items)
+summary(rfq_omod4_fit, standardized = TRUE, fit.measures = TRUE)
+```
+
+\newpage
+
+# Relations between smoking cessation motives and time since cessation
+
+```{r}
+# Define a function to perform repeated Kruskall-Wallis tests
+rfq_kruskal_table <- function(data, items, group_var, digits = 2) {
+  
+  # Epsilon-squared effect size for Kruskal-Wallis.
+  epsilon_squared <- function(H, n, k) (H - k + 1) / (n - k)
+
+  # Format summary statistics
+  fmt_mq <- function(x, digits) {
+    sprintf(
+      "%s (%s, %s)",
+      formatC(median(x),                         format = "f", digits = digits),
+      formatC(quantile(x, 0.25, names = FALSE),  format = "f", digits = digits),
+      formatC(quantile(x, 0.75, names = FALSE),  format = "f", digits = digits)
+    )
+  }
+
+  # Loop over numeric variables
+  results <- lapply(items, function(var) {
+
+    # Subset data
+    df <- na.omit(data[, c(var, group_var)])
+    names(df) <- c("value", "group")
+
+    # Perform Kruskal-Wallis test
+    kw   <- kruskal.test(value ~ group, data = df)
+    H    <- as.numeric(kw$statistic)       
+    n    <- nrow(df)                       
+    k    <- length(unique(df$group))       
+    eps2 <- epsilon_squared(H, n, k)       
+
+    # Create "Median (Q1, Q3)" format for reporting
+    groups <- sort(unique(df$group))
+    group_cells <- setNames(lapply(groups, 
+                                  function(g) fmt_mq(df$value[df$group == g], 
+                                                     digits)),
+                            as.character(groups))
+
+    # Build data frame rows
+    data.frame(Variable    = var,
+               group_cells,
+               Statistic   = round(H, 3),
+               p_value     = kw$p.value,   
+               Effect_size = round(eps2, 3),
+               check.names      = FALSE,
+               stringsAsFactors = FALSE)
+    })
+
+  # Assemble rows into a single table
+  results_df <- do.call(rbind, results)
+
+  # Adjust p-values for multiple comparisons (Benjamin-Hochberg)
+  results_df$adj_p_value <- p.adjust(results_df$p_value, method = "BH")
+
+  # Format p-values for reporting
+  fmt_p <- function(p) ifelse(p < 0.001, "<0.001",
+                              formatC(round(p, 3), format = "f", digits = 3))
+  results_df$p_value     <- fmt_p(results_df$p_value)
+  results_df$adj_p_value <- fmt_p(results_df$adj_p_value)
+  
+  # Return results
+  results_df
+}
+```
+
+\newpage
+
+```{r}
+# Perform repeated Kruskal-Wallis tests
+results_df <- rfq_kruskal_table(data      = data_cleaned,
+                                items     = rfq_items,
+                                group_var = "time_since_quitting")
+results_df
+```
+
+
